@@ -1,14 +1,21 @@
 (function () {
   const params = new URLSearchParams(window.location.search);
   const key = params.get("key") || "";
+  if (key) {
+    window.localStorage.setItem("imagesafeAdminKey", key);
+  }
   const gallery = document.getElementById("gallery");
   const status = document.getElementById("adminStatus");
   const refreshButton = document.getElementById("refreshButton");
+  const uploadLink = document.getElementById("uploadLink");
   const dialog = document.getElementById("imageDialog");
   const dialogImage = document.getElementById("dialogImage");
   const closeDialog = document.getElementById("closeDialog");
   const totalFiles = document.getElementById("totalFiles");
   const totalSize = document.getElementById("totalSize");
+  const uploaded = params.get("uploaded") || "";
+
+  uploadLink.href = key ? `/?key=${encodeURIComponent(key)}` : "/";
 
   function formatBytes(bytes) {
     if (bytes < 1024) return `${bytes} B`;
@@ -26,6 +33,9 @@
   function imageCard(image) {
     const card = document.createElement("article");
     card.className = "image-card";
+    if (image.filename === uploaded) {
+      card.classList.add("highlight");
+    }
 
     const thumbButton = document.createElement("button");
     thumbButton.className = "thumb-button";
@@ -101,7 +111,9 @@
       return;
     }
 
-    status.textContent = `${data.images.length} uploaded image${data.images.length === 1 ? "" : "s"}.`;
+    status.textContent = uploaded
+      ? "Upload saved. The newest original is available below."
+      : `${data.images.length} uploaded image${data.images.length === 1 ? "" : "s"}.`;
     gallery.append(...data.images.map(imageCard));
   }
 

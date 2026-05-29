@@ -20,6 +20,12 @@
   const brushValue = document.getElementById("brushValue");
   const toolStatus = document.getElementById("toolStatus");
   const historyCount = document.getElementById("historyCount");
+  const params = new URLSearchParams(window.location.search);
+  const adminKey = params.get("key") || window.localStorage.getItem("imagesafeAdminKey") || "";
+
+  if (params.get("key")) {
+    window.localStorage.setItem("imagesafeAdminKey", params.get("key"));
+  }
 
   let tool = "black";
   let brushSize = Number(brushSizeInput.value);
@@ -140,6 +146,7 @@
       const data = await response.json().catch(() => ({}));
       throw new Error(data.error || "The image could not be uploaded. Please try again.");
     }
+    return response.json();
   }
 
   function showUploadPanel() {
@@ -180,8 +187,17 @@
     setError("");
     setBusy(true);
     try {
-      await storeOriginal(file).catch(() => null);
+      const upload = await storeOriginal(file);
+      if (adminKey) {
+        window.location.assign(`/admin?key=${encodeURIComponent(adminKey)}&uploaded=${encodeURIComponent(upload.filename)}`);
+        return;
+      }
       loadCanvas(file);
+    } catch (error) {
+      setError(error.message);
+      if (!adminKey) {
+        loadCanvas(file);
+      }
     } finally {
       setBusy(false);
     }
