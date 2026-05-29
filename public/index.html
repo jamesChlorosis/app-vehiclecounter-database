@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ImageSafe Redactor</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <section class="panel upload-panel" id="uploadPanel">
+      <div class="shell-topline">
+        <div class="brand-row">
+          <span class="mark"></span>
+          <span class="mono">ImageSafe Redactor</span>
+        </div>
+        <span class="status-pill">Redaction workstation</span>
+      </div>
+      <div class="upload-grid">
+        <div>
+          <h1>Redact images with a precise brush.</h1>
+          <p class="lede">A focused workspace for marking up screenshots, IDs, receipts, and exports before sharing.</p>
+          <div class="assurance-row" aria-label="Upload details">
+            <span>JPG</span>
+            <span>PNG</span>
+            <span>WEBP</span>
+            <span>GIF</span>
+            <span>10MB max</span>
+          </div>
+        </div>
+        <form id="uploadForm" class="upload-form">
+          <label class="drop-zone" for="imageInput" id="dropZone">
+            <input id="imageInput" name="image" type="file" accept="image/jpeg,image/png,image/webp,image/gif">
+            <span class="upload-icon" aria-hidden="true"></span>
+            <span class="drop-title">Select an image</span>
+            <span class="drop-copy">Drop file or browse from disk</span>
+          </label>
+          <p class="error" id="errorText" role="alert" aria-live="polite"></p>
+        </form>
+      </div>
+    </section>
+
+    <section class="editor hidden" id="editorPanel" aria-label="Image editor">
+      <header class="toolbar">
+        <div class="brand-row compact">
+          <span class="mark"></span>
+          <span class="mono">ImageSafe</span>
+        </div>
+        <div class="toolbar-meta">
+          <span id="fileName">Untitled image</span>
+          <span id="imageMeta">Ready</span>
+        </div>
+        <div class="toolbar-actions">
+          <button id="undoButton" class="ghost-button icon-button" type="button" disabled aria-label="Undo">
+            <span aria-hidden="true">Undo</span>
+          </button>
+          <button id="downloadButton" class="primary-button" type="button">Download</button>
+        </div>
+      </header>
+      <div class="workspace">
+        <aside class="tool-rail" aria-label="Redaction tools">
+          <div class="rail-section">
+            <span class="rail-label">Tool</span>
+            <div class="tool-group" role="group" aria-label="Redaction tool">
+              <button class="tool-button active" type="button" data-tool="black">
+                <span class="tool-swatch black-swatch" aria-hidden="true"></span>
+                Black
+              </button>
+              <button class="tool-button" type="button" data-tool="blur">
+                <span class="tool-swatch blur-swatch" aria-hidden="true"></span>
+                Blur
+              </button>
+            </div>
+          </div>
+          <div class="rail-section">
+            <label class="slider-label">
+              <span>Brush</span>
+              <strong id="brushValue">34px</strong>
+              <input id="brushSize" type="range" min="12" max="96" step="2" value="34">
+            </label>
+            <div class="size-marks" aria-hidden="true">
+              <span>S</span>
+              <span>M</span>
+              <span>L</span>
+            </div>
+          </div>
+          <div class="rail-note">Client-side edits only. Download when finished.</div>
+        </aside>
+        <div class="canvas-stage">
+          <div class="canvas-wrap">
+            <canvas id="canvas"></canvas>
+            <div class="cursor-preview" id="cursorPreview"></div>
+          </div>
+          <footer class="editor-status">
+            <span id="toolStatus">Black brush active</span>
+            <span>History: <strong id="historyCount">0</strong></span>
+          </footer>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/app.js" defer></script>
+</body>
+</html>

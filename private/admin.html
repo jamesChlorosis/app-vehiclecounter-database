@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ImageSafe Admin</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="admin-body">
+  <main class="admin-shell">
+    <header class="admin-header">
+      <div>
+        <div class="brand-row compact">
+          <span class="mark"></span>
+          <span class="mono">ImageSafe Admin</span>
+        </div>
+        <h1>Original uploads</h1>
+      </div>
+      <button id="refreshButton" class="ghost-button" type="button">Refresh</button>
+    </header>
+    <section class="admin-metrics" aria-label="Upload summary">
+      <div>
+        <span>Total files</span>
+        <strong id="totalFiles">0</strong>
+      </div>
+      <div>
+        <span>Storage used</span>
+        <strong id="totalSize">0 B</strong>
+      </div>
+      <div>
+        <span>Access</span>
+        <strong>Keyed</strong>
+      </div>
+    </section>
+    <p id="adminStatus" class="admin-status" aria-live="polite"></p>
+    <section id="gallery" class="gallery" aria-label="Uploaded image gallery"></section>
+  </main>
+
+  <dialog id="imageDialog" class="image-dialog">
+    <button id="closeDialog" class="dialog-close" type="button" aria-label="Close image preview">x</button>
+    <img id="dialogImage" alt="">
+  </dialog>
+
+  <script src="/admin.js" defer></script>
+</body>
+</html>
