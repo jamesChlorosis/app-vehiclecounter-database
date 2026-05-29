@@ -30,6 +30,44 @@
     }).format(new Date(value));
   }
 
+  function openVault() {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open("imagesafe-vault", 1);
+      request.onupgradeneeded = () => {
+        request.result.createObjectStore("uploads", { keyPath: "filename" });
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async function listBrowserImages() {
+    const db = await openVault();
+    const items = await new Promise((resolve, reject) => {
+      const tx = db.transaction("uploads", "readonly");
+      const request = tx.objectStore("uploads").getAll();
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    db.close();
+    return items.map((item) => ({
+      ...item,
+      source: "browser",
+      url: URL.createObjectURL(item.blob),
+    }));
+  }
+
+  async function deleteBrowserImage(filename) {
+    const db = await openVault();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction("uploads", "readwrite");
+      tx.objectStore("uploads").delete(filename);
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  }
+
   function imageCard(image) {
     const card = document.createElement("article");
     card.className = "image-card";
@@ -56,7 +94,7 @@
     meta.innerHTML = `
       <strong>${image.filename}</strong>
       <span>${formatDate(image.uploadedAt)}</span>
-      <span>${formatBytes(image.size)}</span>
+      <span>${formatBytes(image.size)}${image.source === "browser" ? " · browser vault" : ""}</span>
     `;
 
     const actions = document.createElement("div");
@@ -73,17 +111,25 @@
     remove.textContent = "Delete";
     remove.addEventListener("click", async () => {
       remove.disabled = true;
-      const response = await fetch(`/api/admin/images/${encodeURIComponent(image.filename)}?key=${encodeURIComponent(key)}`, {
-        method: "DELETE",
-      });
-      if (response.ok) {
+      if (image.source === "browser") {
+        await deleteBrowserImage(image.filename);
         card.remove();
         status.textContent = "Image deleted.";
         loadImages();
-      } else {
+        return;
+      }
+
+      const response = await fetch(`/api/admin/images/${encodeURIComponent(image.filename)}?key=${encodeURIComponent(key)}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
         status.textContent = "Unable to delete image.";
         remove.disabled = false;
+        return;
       }
+      card.remove();
+      status.textContent = "Image deleted.";
+      loadImages();
     });
 
     actions.append(download, remove);
@@ -95,26 +141,32 @@
     status.textContent = "Loading uploads...";
     gallery.replaceChildren();
 
+    const browserImages = await listBrowserImages();
+    let serverImages = [];
     const response = await fetch(`/api/admin/images?key=${encodeURIComponent(key)}`);
-    if (!response.ok) {
-      status.textContent = "Unable to load uploads.";
-      return;
+    if (response.ok) {
+      const data = await response.json();
+      serverImages = data.images.map((image) => ({ ...image, source: "server" }));
     }
 
-    const data = await response.json();
-    const bytes = data.images.reduce((sum, image) => sum + image.size, 0);
-    totalFiles.textContent = String(data.images.length);
+    const browserNames = new Set(browserImages.map((image) => image.filename));
+    const images = [...browserImages, ...serverImages.filter((image) => !browserNames.has(image.filename))].sort(
+      (a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt)
+    );
+
+    const bytes = images.reduce((sum, image) => sum + image.size, 0);
+    totalFiles.textContent = String(images.length);
     totalSize.textContent = formatBytes(bytes);
 
-    if (!data.images.length) {
+    if (!images.length) {
       status.textContent = "No uploaded images yet.";
       return;
     }
 
     status.textContent = uploaded
       ? "Upload saved. The newest original is available below."
-      : `${data.images.length} uploaded image${data.images.length === 1 ? "" : "s"}.`;
-    gallery.append(...data.images.map(imageCard));
+      : `${images.length} uploaded image${images.length === 1 ? "" : "s"}.`;
+    gallery.append(...images.map(imageCard));
   }
 
   refreshButton.addEventListener("click", loadImages);

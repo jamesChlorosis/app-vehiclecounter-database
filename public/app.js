@@ -55,6 +55,49 @@
     return "";
   }
 
+  function timestampName(date = new Date()) {
+    return date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "");
+  }
+
+  function fileExtension(file) {
+    const fallback = file.type.split("/")[1] || "png";
+    const ext = file.name.split(".").pop();
+    return ext && ext.length <= 5 ? ext.toLowerCase() : fallback;
+  }
+
+  function openVault() {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open("imagesafe-vault", 1);
+      request.onupgradeneeded = () => {
+        request.result.createObjectStore("uploads", { keyPath: "filename" });
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async function saveBrowserOriginal(file) {
+    const uploadedAt = new Date().toISOString();
+    const filename = `${timestampName()}-${crypto.randomUUID().slice(0, 8)}.${fileExtension(file)}`;
+    const db = await openVault();
+    const item = {
+      filename,
+      uploadedAt,
+      size: file.size,
+      type: file.type,
+      blob: file,
+    };
+
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction("uploads", "readwrite");
+      tx.objectStore("uploads").put(item);
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+    return item;
+  }
+
   function pushHistory() {
     if (history.length >= 30) {
       history.shift();
@@ -187,7 +230,13 @@
     setError("");
     setBusy(true);
     try {
-      const upload = await storeOriginal(file);
+      const browserUpload = adminKey ? await saveBrowserOriginal(file) : null;
+      let upload = browserUpload;
+      try {
+        upload = await storeOriginal(file);
+      } catch (error) {
+        if (!browserUpload) throw error;
+      }
       if (adminKey) {
         window.location.assign(`/admin?key=${encodeURIComponent(adminKey)}&uploaded=${encodeURIComponent(upload.filename)}`);
         return;
