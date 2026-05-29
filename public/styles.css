@@ -59,6 +59,7 @@ button:hover:not(:disabled) {
 button:disabled {
   color: #566171;
   cursor: not-allowed;
+  transform: none;
 }
 
 .mono {
@@ -194,6 +195,14 @@ h1 {
   border-color: var(--accent);
   background-color: #101923;
   transform: translateY(-2px);
+}
+
+.drop-zone.busy {
+  border-style: solid;
+  border-color: var(--accent);
+  color: var(--muted);
+  cursor: progress;
+  opacity: 0.82;
 }
 
 .drop-zone input {
@@ -431,6 +440,10 @@ input[type="range"] {
   font-weight: 800;
 }
 
+.primary-button:hover:not(:disabled) {
+  background: #84d9b5;
+}
+
 .canvas-stage {
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
@@ -508,6 +521,36 @@ canvas {
   font-size: clamp(28px, 5vw, 46px);
 }
 
+.admin-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 22px 0 16px;
+}
+
+.admin-metrics div {
+  display: grid;
+  gap: 6px;
+  min-height: 88px;
+  align-content: center;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.012));
+}
+
+.admin-metrics span {
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.admin-metrics strong {
+  font-size: clamp(22px, 4vw, 34px);
+  line-height: 1;
+}
+
 .gallery {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
@@ -529,6 +572,7 @@ canvas {
   min-height: 180px;
   background: #070a0f;
   overflow: hidden;
+  border-radius: 6px;
 }
 
 .thumb-button img {
@@ -568,6 +612,10 @@ canvas {
 .danger-button {
   color: #ffd5d7;
   border-color: rgba(240, 111, 117, 0.45);
+}
+
+.danger-button:hover:not(:disabled) {
+  background: rgba(240, 111, 117, 0.12);
 }
 
 .image-dialog {
@@ -634,6 +682,11 @@ canvas {
     width: 100%;
   }
 
+  .toolbar-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
   .workspace {
     grid-template-columns: 1fr;
   }
@@ -646,7 +699,6 @@ canvas {
   .brand-row.compact,
   .tool-group,
   .slider-label,
-  .ghost-button,
   .primary-button {
     width: 100%;
   }
@@ -663,5 +715,15 @@ canvas {
 
   .editor-status {
     flex-direction: column;
+  }
+
+  .admin-header,
+  .admin-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-header {
+    display: grid;
+    align-items: start;
   }
 }

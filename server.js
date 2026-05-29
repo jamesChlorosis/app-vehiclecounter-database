@@ -1,20 +1,27 @@
 const crypto = require("crypto");
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const express = require("express");
 const multer = require("multer");
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
-const ADMIN_KEY = process.env.ADMIN_KEY || "SECRETKEY2077";
+const ADMIN_KEY = process.env.ADMIN_KEY || (process.env.NODE_ENV === "production" ? "" : "SECRETKEY2077");
 const ROOT = __dirname;
 const PUBLIC_DIR = path.join(ROOT, "public");
 const PRIVATE_DIR = path.join(ROOT, "private");
-const UPLOADS_DIR = path.join(ROOT, "uploads");
-const MAX_FILE_SIZE = 10 * 1024 * 1024;
+const UPLOADS_DIR =
+  process.env.UPLOADS_DIR ||
+  (process.env.VERCEL ? path.join(os.tmpdir(), "imagesafe-uploads") : path.join(ROOT, "uploads"));
+const MAX_FILE_SIZE = 4 * 1024 * 1024;
+const MAX_FILE_SIZE_LABEL = "4MB";
 
-const uploadsDir = '/tmp/uploads';
-fs.mkdirSync(uploadsDir, { recursive: true });
+function ensureUploadsDir() {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
+
+ensureUploadsDir();
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -30,7 +37,7 @@ const mimeToExt = {
 };
 
 function wantsAdmin(req) {
-  return req.query.key === ADMIN_KEY;
+  return Boolean(ADMIN_KEY) && req.query.key === ADMIN_KEY;
 }
 
 function sendNotFound(res) {
@@ -118,13 +125,14 @@ app.post("/api/upload", upload.single("image"), async (req, res) => {
 
     const ext = mimeToExt[detectedMime];
     const filename = `${formatTimestamp()}-${crypto.randomBytes(4).toString("hex")}${ext}`;
+    ensureUploadsDir();
     const outputPath = path.join(UPLOADS_DIR, filename);
     await fs.promises.writeFile(outputPath, req.file.buffer);
 
     res.status(201).json({ ok: true, filename });
   } catch (error) {
     if (error && error.code === "LIMIT_FILE_SIZE") {
-      return res.status(413).json({ error: "That image is larger than 10MB. Please choose a smaller file." });
+      return res.status(413).json({ error: `That image is larger than ${MAX_FILE_SIZE_LABEL}. Please choose a smaller file.` });
     }
     res.status(500).json({ error: "The image could not be uploaded. Please try again." });
   }
@@ -135,7 +143,16 @@ app.get("/api/admin/images", async (req, res) => {
     return sendNotFound(res);
   }
 
-  const entries = await fs.promises.readdir(UPLOADS_DIR, { withFileTypes: true });
+  let entries = [];
+  try {
+    ensureUploadsDir();
+    entries = await fs.promises.readdir(UPLOADS_DIR, { withFileTypes: true });
+  } catch (error) {
+    if (!error || error.code !== "ENOENT") {
+      throw error;
+    }
+  }
+
   const images = await Promise.all(
     entries
       .filter((entry) => entry.isFile() && safeFilename(entry.name))
@@ -184,8 +201,12 @@ app.get("/uploads/:filename", (req, res) => {
 app.use(express.static(PUBLIC_DIR));
 app.use((req, res) => sendNotFound(res));
 
-app.listen(PORT, () => {
-  if (process.env.NODE_ENV !== "production") {
-    console.log(`ImageSafe Redactor is running at http://localhost:${PORT}`);
-  }
-});
+if (require.main === module) {
+  app.listen(PORT, () => {
+    if (process.env.NODE_ENV !== "production") {
+      console.log(`ImageSafe Redactor is running at http://localhost:${PORT}`);
+    }
+  });
+}
+
+module.exports = app;

@@ -1,6 +1,6 @@
 (function () {
   const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
-  const maxBytes = 10 * 1024 * 1024;
+  const maxBytes = 4 * 1024 * 1024;
 
   const uploadPanel = document.getElementById("uploadPanel");
   const editorPanel = document.getElementById("editorPanel");
@@ -9,6 +9,7 @@
   const canvas = document.getElementById("canvas");
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   const brushSizeInput = document.getElementById("brushSize");
+  const newImageButton = document.getElementById("newImageButton");
   const undoButton = document.getElementById("undoButton");
   const downloadButton = document.getElementById("downloadButton");
   const cursorPreview = document.getElementById("cursorPreview");
@@ -32,6 +33,7 @@
 
   function setBusy(isBusy) {
     dropZone.classList.toggle("busy", isBusy);
+    imageInput.disabled = isBusy;
   }
 
   function updateEditorStatus() {
@@ -43,7 +45,7 @@
   function friendlyFileError(file) {
     if (!file) return "Please choose an image file.";
     if (!allowedTypes.has(file.type)) return "Please choose a JPG, PNG, WEBP, or GIF image.";
-    if (file.size > maxBytes) return "That image is larger than 10MB. Please choose a smaller file.";
+    if (file.size > maxBytes) return "That image is larger than 4MB. Please choose a smaller file.";
     return "";
   }
 
@@ -140,6 +142,14 @@
     }
   }
 
+  function showUploadPanel() {
+    editorPanel.classList.add("hidden");
+    uploadPanel.classList.remove("hidden");
+    imageInput.value = "";
+    setError("");
+    cursorPreview.style.display = "none";
+  }
+
   function loadCanvas(file) {
     const image = new Image();
     image.onload = () => {
@@ -170,10 +180,8 @@
     setError("");
     setBusy(true);
     try {
-      await storeOriginal(file);
+      await storeOriginal(file).catch(() => null);
       loadCanvas(file);
-    } catch (error) {
-      setError(error.message);
     } finally {
       setBusy(false);
     }
@@ -242,6 +250,7 @@
   });
 
   undoButton.addEventListener("click", undo);
+  newImageButton.addEventListener("click", showUploadPanel);
 
   downloadButton.addEventListener("click", () => {
     const link = document.createElement("a");

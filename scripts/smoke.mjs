@@ -1,6 +1,18 @@
 import { spawn } from "node:child_process";
+import { createServer } from "node:net";
 
-const port = 3111;
+async function getFreePort() {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      server.close(() => resolve(address.port));
+    });
+  });
+}
+
+const port = await getFreePort();
 const baseUrl = `http://127.0.0.1:${port}`;
 const pngBytes = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/l7xO6QAAAABJRU5ErkJggg==",
