@@ -5,6 +5,7 @@ const path = require("path");
 const { Readable } = require("stream");
 const express = require("express");
 const multer = require("multer");
+const cloudinary = require("cloudinary").v2;
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -18,7 +19,20 @@ const UPLOADS_DIR =
 const MAX_FILE_SIZE = 4 * 1024 * 1024;
 const MAX_FILE_SIZE_LABEL = "4MB";
 const BLOB_PREFIX = "uploads/";
+const CLOUDINARY_PREFIX = "imagesafe/";
+const HAS_CLOUDINARY_STORAGE = Boolean(
+  process.env.CLOUDINARY_URL ||
+    (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET)
+);
 const HAS_BLOB_STORAGE = Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+
+if (HAS_CLOUDINARY_STORAGE && !process.env.CLOUDINARY_URL) {
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+  });
+}
 
 function ensureUploadsDir() {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
@@ -102,6 +116,18 @@ function formatTimestamp(date = new Date()) {
   return date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "");
 }
 
+function cloudinaryPublicId(filename) {
+  return `${CLOUDINARY_PREFIX}${path.parse(filename).name}`;
+}
+
+function cloudinaryFilename(resource) {
+  return `${path.basename(resource.public_id)}.${resource.format}`;
+}
+
+function isCloudinaryStorageEnabled() {
+  return HAS_CLOUDINARY_STORAGE;
+}
+
 async function getBlobStore() {
   return import("@vercel/blob");
 }
@@ -112,11 +138,30 @@ function isBlobStorageEnabled() {
 
 function storageUnavailableMessage() {
   return process.env.VERCEL
-    ? "Upload storage is not configured. Add Vercel Blob to this project and redeploy."
+    ? "Upload storage is not configured. Add Cloudinary credentials to this project and redeploy."
     : "Upload storage is not configured.";
 }
 
 async function saveOriginal(filename, buffer, contentType) {
+  if (isCloudinaryStorageEnabled()) {
+    await new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        {
+          public_id: cloudinaryPublicId(filename),
+          resource_type: "image",
+          overwrite: true,
+          tags: ["imagesafe-redactor"],
+        },
+        (error, result) => {
+          if (error) return reject(error);
+          resolve(result);
+        }
+      );
+      stream.end(buffer);
+    });
+    return;
+  }
+
   if (isBlobStorageEnabled()) {
     const { put } = await getBlobStore();
     await put(`${BLOB_PREFIX}${filename}`, buffer, {
@@ -138,6 +183,35 @@ async function saveOriginal(filename, buffer, contentType) {
 }
 
 async function listOriginals(adminKey) {
+  if (isCloudinaryStorageEnabled()) {
+    const resources = [];
+    let nextCursor;
+    do {
+      const response = await cloudinary.api.resources({
+        resource_type: "image",
+        type: "upload",
+        prefix: CLOUDINARY_PREFIX,
+        max_results: 500,
+        next_cursor: nextCursor,
+      });
+      resources.push(...response.resources);
+      nextCursor = response.next_cursor;
+    } while (nextCursor);
+
+    return resources
+      .map((resource) => {
+        const filename = cloudinaryFilename(resource);
+        if (!safeFilename(filename)) return null;
+        return {
+          filename,
+          uploadedAt: resource.created_at,
+          size: resource.bytes,
+          url: `/uploads/${encodeURIComponent(filename)}?key=${encodeURIComponent(adminKey)}`,
+        };
+      })
+      .filter(Boolean);
+  }
+
   if (isBlobStorageEnabled()) {
     const { list } = await getBlobStore();
     const { blobs } = await list({ prefix: BLOB_PREFIX });
@@ -185,6 +259,14 @@ async function listOriginals(adminKey) {
 }
 
 async function deleteOriginal(filename) {
+  if (isCloudinaryStorageEnabled()) {
+    const result = await cloudinary.uploader.destroy(cloudinaryPublicId(filename), {
+      resource_type: "image",
+      invalidate: true,
+    });
+    return result.result === "ok" || result.result === "not found";
+  }
+
   if (isBlobStorageEnabled()) {
     const { del } = await getBlobStore();
     await del(`${BLOB_PREFIX}${filename}`);
@@ -204,6 +286,15 @@ async function deleteOriginal(filename) {
 }
 
 async function sendOriginal(req, res, filename) {
+  if (isCloudinaryStorageEnabled()) {
+    try {
+      const resource = await cloudinary.api.resource(cloudinaryPublicId(filename), { resource_type: "image" });
+      return res.redirect(302, resource.secure_url);
+    } catch (error) {
+      return sendNotFound(res);
+    }
+  }
+
   if (isBlobStorageEnabled()) {
     const { list } = await getBlobStore();
     const { blobs } = await list({ prefix: `${BLOB_PREFIX}${filename}`, limit: 1 });
@@ -267,7 +358,14 @@ app.get("/api/admin/images", async (req, res) => {
   const images = await listOriginals(req.query.key);
 
   images.sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt));
-  res.json({ images, storage: isBlobStorageEnabled() ? "blob" : "local" });
+  const storage = isCloudinaryStorageEnabled()
+    ? "cloudinary"
+    : isBlobStorageEnabled()
+      ? "blob"
+      : process.env.VERCEL
+        ? "unconfigured"
+        : "local";
+  res.json({ images, storage });
 });
 
 app.delete("/api/admin/images/:filename", async (req, res) => {
