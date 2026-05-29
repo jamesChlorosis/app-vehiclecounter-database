@@ -13,7 +13,8 @@ const PRIVATE_DIR = path.join(ROOT, "private");
 const UPLOADS_DIR = path.join(ROOT, "uploads");
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
-fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+const uploadsDir = '/tmp/uploads';
+fs.mkdirSync(uploadsDir, { recursive: true });
 
 const upload = multer({
   storage: multer.memoryStorage(),
