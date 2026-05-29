@@ -21,7 +21,7 @@
   const toolStatus = document.getElementById("toolStatus");
   const historyCount = document.getElementById("historyCount");
   const params = new URLSearchParams(window.location.search);
-  const adminKey = params.get("key") || window.localStorage.getItem("imagesafeAdminKey") || "";
+  const adminKey = params.get("key") || "";
 
   if (params.get("key")) {
     window.localStorage.setItem("imagesafeAdminKey", params.get("key"));
