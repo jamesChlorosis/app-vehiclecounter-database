@@ -7,6 +7,9 @@ on:
       - "construction_weighbridge_app/**"
       - ".github/workflows/flutter-apk.yml"
 
+permissions:
+  contents: read
+
 jobs:
   android-apk:
     runs-on: ubuntu-latest
@@ -17,10 +20,13 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
 
       - name: Setup Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
@@ -41,7 +47,8 @@ jobs:
         run: flutter build apk --release
 
       - name: Upload APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: quarry-gate-release-apk
           path: construction_weighbridge_app/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
