@@ -96,6 +96,7 @@ class ExportService {
     'Rate',
     'Amount',
     'Cash',
+    'Bank/GPay',
     'Credit',
   ];
 
@@ -126,6 +127,6 @@ class ExportService {
 
   String _bottomSummary(DailyTotals totals) {
     String qty(String item) => (totals.itemQty[item] ?? 0).toStringAsFixed(2);
-    return '40mm=${qty('40mm')} 20mm=${qty('20mm')} 12mm=${qty('12mm')} 6mm=${qty('6mm')} Dust=${qty('Dust')} Ms=${qty('Sand')}';
+    return '40mm=${qty('40mm')} 20mm=${qty('20mm')} 6mm=${qty('6mm')} Dust=${qty('Dust')} M-Sand=${qty('M-Sand')} P-Sand=${qty('P-Sand')}';
   }
 }

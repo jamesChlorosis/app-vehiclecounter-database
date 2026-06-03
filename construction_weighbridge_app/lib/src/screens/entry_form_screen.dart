@@ -28,18 +28,27 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
   late final TextEditingController _plate;
   late final TextEditingController _party;
   late final TextEditingController _remarks;
+  late final TextEditingController _driver;
   late final TextEditingController _rate;
   late final TextEditingController _amount;
+  late final TextEditingController _discount;
   late final TextEditingController _cash;
+  late final TextEditingController _bank;
+  late final TextEditingController _gpay;
   late final TextEditingController _credit;
   late final TextEditingController _slip;
   late final TextEditingController _extra;
+  late final TextEditingController _bodyRemarks;
 
   String _item = '20mm';
   double _qty = 1;
   DateTime _timeIn = DateTime.now();
   DateTime? _timeOut;
   PaymentType _payment = PaymentType.cash;
+  DiscountType _discountType = DiscountType.none;
+  bool _companyBody = false;
+  bool _extraBody = false;
+  bool _isPickup = false;
   bool _historyHit = false;
   bool _loaded = false;
 
@@ -50,18 +59,27 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
     _plate = TextEditingController(text: entry?.vehicleNumber ?? widget.initialPlate);
     _party = TextEditingController(text: entry?.partyName ?? '');
     _remarks = TextEditingController(text: entry?.remarks ?? '');
+    _driver = TextEditingController(text: entry?.driverName ?? '');
     _rate = TextEditingController(text: entry?.unitRate?.toStringAsFixed(0) ?? '');
-    _amount = TextEditingController(text: entry?.amount.toStringAsFixed(0) ?? '');
+    _amount = TextEditingController(text: entry?.netAmount.toStringAsFixed(0) ?? '');
+    _discount = TextEditingController(text: entry?.discountValue?.toStringAsFixed(0) ?? '');
     _cash = TextEditingController(text: entry?.cashAmount.toStringAsFixed(0) ?? '');
+    _bank = TextEditingController(text: entry?.bankAmount.toStringAsFixed(0) ?? '');
+    _gpay = TextEditingController(text: entry?.gpayAmount.toStringAsFixed(0) ?? '');
     _credit = TextEditingController(text: entry?.creditAmount.toStringAsFixed(0) ?? '');
     _slip = TextEditingController(text: entry?.pageSlipNo.toString() ?? '');
     _extra = TextEditingController(text: entry?.extraInfo ?? '');
+    _bodyRemarks = TextEditingController(text: entry?.bodyRemarks ?? '');
     if (entry != null) {
       _item = entry.itemType;
       _qty = entry.quantity;
       _timeIn = entry.timeIn;
       _timeOut = entry.timeOut;
       _payment = entry.paymentType;
+      _discountType = entry.discountType;
+      _companyBody = entry.companyBody;
+      _extraBody = entry.extraBody;
+      _isPickup = entry.isPickup;
     }
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadDefaults());
   }
@@ -82,7 +100,15 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
       _party.text = vehicle.partyName;
       _item = vehicle.defaultItem;
       _qty = vehicle.lastQty;
+      if (vehicle.currentRate > 0) _rate.text = vehicle.currentRate.toStringAsFixed(0);
+      _companyBody = vehicle.companyBody;
+      _extraBody = vehicle.extraBody;
+      _isPickup = vehicle.isPickup;
+      _bodyRemarks.text = vehicle.bodyRemarks;
       _historyHit = true;
+    }
+    if (_rate.text.isEmpty && (state.materialRates[_item] ?? 0) > 0) {
+      _rate.text = state.materialRates[_item]!.toStringAsFixed(0);
     }
     _slip.text = slip.toString();
     _recalculate();
@@ -90,16 +116,26 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
   }
 
   void _recalculate() {
-    final rate = double.tryParse(_rate.text);
-    final computed = rate == null ? double.tryParse(_amount.text) ?? 0 : rate * _qty;
-    _amount.text = computed == 0 ? '' : computed.toStringAsFixed(0);
-    if (_payment == PaymentType.cash) {
-      _cash.text = computed == 0 ? '' : computed.toStringAsFixed(0);
-      _credit.text = '0';
-    } else {
-      _cash.text = '0';
-      _credit.text = computed == 0 ? '' : computed.toStringAsFixed(0);
-    }
+    final gross = _grossAmount;
+    final discount = _discountAmount(gross);
+    final net = (gross - discount).clamp(0, double.infinity);
+    _amount.text = net == 0 ? '' : net.toStringAsFixed(0);
+    if (_payment == PaymentType.mixed) return;
+    _cash.text = _payment == PaymentType.cash && net > 0 ? net.toStringAsFixed(0) : '0';
+    _bank.text = _payment == PaymentType.bank && net > 0 ? net.toStringAsFixed(0) : '0';
+    _gpay.text = _payment == PaymentType.gpay && net > 0 ? net.toStringAsFixed(0) : '0';
+    _credit.text = _payment == PaymentType.credit && net > 0 ? net.toStringAsFixed(0) : '0';
+  }
+
+  double get _grossAmount => (double.tryParse(_rate.text) ?? 0) * _qty;
+
+  double _discountAmount(double gross) {
+    final value = double.tryParse(_discount.text) ?? 0;
+    return switch (_discountType) {
+      DiscountType.none => 0,
+      DiscountType.percentage => (gross * value / 100).clamp(0, gross).toDouble(),
+      DiscountType.fixedAmount => value.clamp(0, gross).toDouble(),
+    };
   }
 
   Future<void> _pickTime({required bool out}) async {
@@ -122,8 +158,28 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     final state = context.read<AppState>();
-    final amount = double.tryParse(_amount.text) ?? 0;
+    final gross = _grossAmount;
+    final discountAmount = _discountAmount(gross);
+    final netAmount = (gross - discountAmount).clamp(0, double.infinity).toDouble();
+    final cash = double.tryParse(_cash.text) ?? 0;
+    final bank = double.tryParse(_bank.text) ?? 0;
+    final gpay = double.tryParse(_gpay.text) ?? 0;
+    final credit = double.tryParse(_credit.text) ?? 0;
+    final paidTotal = cash + bank + gpay + credit;
+    if (_qty <= 0) {
+      _showError('Quantity must be greater than 0.');
+      return;
+    }
+    if ((double.tryParse(_rate.text) ?? 0) <= 0) {
+      _showError('Rate must be greater than 0.');
+      return;
+    }
+    if ((paidTotal - netAmount).abs() > 0.01) {
+      _showError('Payment total Rs ${paidTotal.toStringAsFixed(0)} does not match Net Amount Rs ${netAmount.toStringAsFixed(0)}.');
+      return;
+    }
     final now = DateTime.now();
+    final slipNo = int.tryParse(_slip.text) ?? await state.nextSlipNo();
     final entry = Entry(
       id: widget.existing?.id,
       vehicleNumber: DatabaseService.normalizePlate(_plate.text),
@@ -134,11 +190,24 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
       timeIn: _timeIn,
       timeOut: _timeOut,
       unitRate: double.tryParse(_rate.text),
-      amount: amount,
+      amount: netAmount,
+      grossAmount: gross,
+      discountType: _discountType,
+      discountValue: _discountType == DiscountType.none ? null : double.tryParse(_discount.text),
+      discountAmount: discountAmount,
+      netAmount: netAmount,
       paymentType: _payment,
-      cashAmount: double.tryParse(_cash.text) ?? (_payment == PaymentType.cash ? amount : 0),
-      creditAmount: double.tryParse(_credit.text) ?? (_payment == PaymentType.credit ? amount : 0),
-      pageSlipNo: int.tryParse(_slip.text) ?? await state.nextSlipNo(),
+      cashAmount: cash,
+      bankAmount: bank,
+      gpayAmount: gpay,
+      creditAmount: credit,
+      pageSlipNo: slipNo,
+      slipNumber: _slipNumber(_timeIn, slipNo),
+      driverName: _driver.text.trim(),
+      companyBody: _companyBody,
+      extraBody: _extraBody,
+      isPickup: _isPickup,
+      bodyRemarks: _bodyRemarks.text.trim(),
       extraInfo: _extra.text.trim(),
       date: Entry.dateFormat.format(_timeIn),
       createdAt: widget.existing?.createdAt ?? now,
@@ -153,9 +222,22 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
     Navigator.of(context).pop();
   }
 
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: AppColors.red),
+    );
+  }
+
+  String _slipNumber(DateTime date, int serial) {
+    final y = date.year.toString().padLeft(4, '0');
+    final m = date.month.toString().padLeft(2, '0');
+    final d = date.day.toString().padLeft(2, '0');
+    return 'DS-$y$m$d-${serial.toString().padLeft(4, '0')}';
+  }
+
   @override
   void dispose() {
-    for (final controller in [_plate, _party, _remarks, _rate, _amount, _cash, _credit, _slip, _extra]) {
+    for (final controller in [_plate, _party, _remarks, _driver, _rate, _amount, _discount, _cash, _bank, _gpay, _credit, _slip, _extra, _bodyRemarks]) {
       controller.dispose();
     }
     super.dispose();
@@ -220,7 +302,14 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
                               selectedColor: AppColors.amber,
                               checkmarkColor: Colors.black,
                               label: Text(item, style: TextStyle(color: selected ? Colors.black : Colors.white)),
-                              onSelected: (_) => setState(() => _item = item),
+                              onSelected: (_) {
+                                setState(() {
+                                  _item = item;
+                                  final rate = state.materialRates[item] ?? 0;
+                                  if (rate > 0) _rate.text = rate.toStringAsFixed(0);
+                                });
+                                _recalculate();
+                              },
                             ),
                           );
                         }),
@@ -244,7 +333,7 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
                       ),
                       Expanded(
                         child: Center(
-                          child: Text('${_qty.toStringAsFixed(_qty.truncateToDouble() == _qty ? 0 : 1)} tons',
+                          child: Text('${_qty.toStringAsFixed(_qty.truncateToDouble() == _qty ? 0 : 1)} CFT',
                               style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900)),
                         ),
                       ),
@@ -265,14 +354,18 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
               title: 'Payment',
               child: Column(
                 children: [
-                  SegmentedButton<PaymentType>(
-                    segments: const [
-                      ButtonSegment(value: PaymentType.cash, label: Text('CASH'), icon: Icon(Icons.payments)),
-                      ButtonSegment(value: PaymentType.credit, label: Text('CREDIT'), icon: Icon(Icons.receipt_long)),
+                  DropdownButtonFormField<PaymentType>(
+                    value: _payment,
+                    decoration: const InputDecoration(labelText: 'Payment Type'),
+                    items: const [
+                      DropdownMenuItem(value: PaymentType.cash, child: Text('Cash')),
+                      DropdownMenuItem(value: PaymentType.bank, child: Text('Bank')),
+                      DropdownMenuItem(value: PaymentType.gpay, child: Text('GPay')),
+                      DropdownMenuItem(value: PaymentType.credit, child: Text('Credit')),
+                      DropdownMenuItem(value: PaymentType.mixed, child: Text('Mixed')),
                     ],
-                    selected: {_payment},
-                    onSelectionChanged: (value) {
-                      setState(() => _payment = value.first);
+                    onChanged: (value) {
+                      setState(() => _payment = value ?? PaymentType.cash);
                       _recalculate();
                     },
                   ),
@@ -283,7 +376,7 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
                         child: TextFormField(
                           controller: _rate,
                           keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(labelText: 'Unit Rate'),
+                          decoration: const InputDecoration(labelText: 'Rate / CFT'),
                           onChanged: (_) => _recalculate(),
                         ),
                       ),
@@ -292,7 +385,8 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
                         child: TextFormField(
                           controller: _amount,
                           keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(labelText: 'Amount'),
+                          readOnly: true,
+                          decoration: const InputDecoration(labelText: 'Net Amount'),
                         ),
                       ),
                     ],
@@ -300,9 +394,39 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
                   const SizedBox(height: 12),
                   Row(
                     children: [
-                      Expanded(child: TextFormField(controller: _cash, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Cash Amount'))),
+                      Expanded(
+                        child: DropdownButtonFormField<DiscountType>(
+                          value: _discountType,
+                          decoration: const InputDecoration(labelText: 'Discount'),
+                          items: const [
+                            DropdownMenuItem(value: DiscountType.none, child: Text('None')),
+                            DropdownMenuItem(value: DiscountType.percentage, child: Text('%')),
+                            DropdownMenuItem(value: DiscountType.fixedAmount, child: Text('Rs')),
+                          ],
+                          onChanged: (value) {
+                            setState(() => _discountType = value ?? DiscountType.none);
+                            _recalculate();
+                          },
+                        ),
+                      ),
                       const SizedBox(width: 10),
-                      Expanded(child: TextFormField(controller: _credit, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Credit Amount'))),
+                      Expanded(child: TextFormField(controller: _discount, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Discount Value'), onChanged: (_) => _recalculate())),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(child: TextFormField(controller: _cash, readOnly: _payment != PaymentType.mixed, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Cash'))),
+                      const SizedBox(width: 8),
+                      Expanded(child: TextFormField(controller: _bank, readOnly: _payment != PaymentType.mixed, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Bank'))),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(child: TextFormField(controller: _gpay, readOnly: _payment != PaymentType.mixed, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'GPay'))),
+                      const SizedBox(width: 8),
+                      Expanded(child: TextFormField(controller: _credit, readOnly: _payment != PaymentType.mixed, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Credit'))),
                     ],
                   ),
                 ],
@@ -334,6 +458,17 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
                   ),
                   const SizedBox(height: 12),
                   TextFormField(controller: _remarks, decoration: const InputDecoration(labelText: 'Remarks / Notes')),
+                  const SizedBox(height: 12),
+                  TextFormField(controller: _driver, decoration: const InputDecoration(labelText: 'Driver Name')),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(child: SwitchListTile.adaptive(value: _companyBody, onChanged: (value) => setState(() => _companyBody = value), title: const Text('Company Body'))),
+                      Expanded(child: SwitchListTile.adaptive(value: _extraBody, onChanged: (value) => setState(() => _extraBody = value), title: const Text('Extra Body'))),
+                    ],
+                  ),
+                  SwitchListTile.adaptive(value: _isPickup, onChanged: (value) => setState(() => _isPickup = value), title: const Text('Pickup Truck')),
+                  TextFormField(controller: _bodyRemarks, decoration: const InputDecoration(labelText: 'Body Remarks')),
                   const SizedBox(height: 12),
                   Row(
                     children: [

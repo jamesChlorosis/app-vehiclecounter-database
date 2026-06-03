@@ -265,7 +265,7 @@ class _StatsGrid extends StatelessWidget {
       childAspectRatio: 1.65,
       children: [
         _StatCard(icon: Icons.local_shipping, label: 'Total Vehicles', value: '${totals.vehicleCount}', color: AppColors.amber),
-        _StatCard(icon: Icons.scale, label: 'Total Qty', value: totals.totalQty.toStringAsFixed(1), color: const Color(0xFF38BDF8)),
+        _StatCard(icon: Icons.scale, label: 'Total CFT', value: totals.totalQty.toStringAsFixed(1), color: const Color(0xFF38BDF8)),
         _StatCard(icon: Icons.payments, label: 'Cash Collected', value: 'Rs ${totals.cashTotal.toStringAsFixed(0)}', color: AppColors.green),
         _StatCard(icon: Icons.receipt_long, label: 'Credit Pending', value: 'Rs ${totals.creditTotal.toStringAsFixed(0)}', color: AppColors.red),
       ],

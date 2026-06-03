@@ -163,7 +163,7 @@ class _EntryCard extends StatelessWidget {
                     children: [
                       StatusChip(label: entry.itemType, color: _itemColor(entry.itemType)),
                       const SizedBox(height: 6),
-                      Text('${entry.quantity.toStringAsFixed(1)} t', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
+                      Text('${entry.quantity.toStringAsFixed(1)} CFT', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
                     ],
                   ),
                 ],
@@ -179,15 +179,15 @@ class _EntryCard extends StatelessWidget {
                 child: Row(
                   children: [
                     Expanded(child: Text(Entry.timeFormat.format(entry.timeIn))),
-                    Expanded(child: Text('Rs ${entry.amount.toStringAsFixed(0)}')),
+                    Expanded(child: Text('Rs ${entry.netAmount.toStringAsFixed(0)}')),
                     StatusChip(
                       label: entry.synced ? 'SYNCED' : 'LOCAL',
                       color: entry.synced ? AppColors.green : AppColors.red,
                     ),
                     const SizedBox(width: 8),
                     StatusChip(
-                      label: isCash ? 'CASH' : 'CREDIT',
-                      color: isCash ? AppColors.green : AppColors.amber,
+                      label: _paymentLabel(entry),
+                      color: isCash ? AppColors.green : entry.paymentType == PaymentType.credit ? AppColors.red : AppColors.amber,
                     ),
                   ],
                 ),
@@ -224,11 +224,21 @@ class _EntryCard extends StatelessWidget {
     return switch (item) {
       '40mm' => const Color(0xFF38BDF8),
       '20mm' => AppColors.amber,
-      '12mm' => const Color(0xFFA78BFA),
       '6mm' => const Color(0xFF2DD4BF),
       'Dust' => const Color(0xFFF87171),
-      'Sand' => const Color(0xFFFACC15),
+      'M-Sand' => const Color(0xFFFACC15),
+      'P-Sand' => const Color(0xFFFB923C),
       _ => const Color(0xFFE2E8F0),
+    };
+  }
+
+  String _paymentLabel(Entry entry) {
+    return switch (entry.paymentType) {
+      PaymentType.cash => 'CASH',
+      PaymentType.bank => 'BANK',
+      PaymentType.gpay => 'GPAY',
+      PaymentType.credit => 'CREDIT',
+      PaymentType.mixed => 'MIXED',
     };
   }
 }

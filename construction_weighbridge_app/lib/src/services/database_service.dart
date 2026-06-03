@@ -4,6 +4,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../models/account_row.dart';
 import '../models/entry.dart';
+import '../models/purchase_entry.dart';
 import '../models/settings.dart';
 import '../models/vehicle.dart';
 
@@ -16,7 +17,7 @@ class DatabaseService {
     final path = p.join(dir.path, 'quarry_gate.sqlite');
     _db = await openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: _create,
       onUpgrade: _upgrade,
     );
@@ -36,10 +37,23 @@ class DatabaseService {
         time_out TEXT,
         unit_rate REAL,
         amount REAL NOT NULL,
+        gross_amount REAL NOT NULL DEFAULT 0,
+        discount_type TEXT NOT NULL DEFAULT 'none',
+        discount_value REAL,
+        discount_amount REAL NOT NULL DEFAULT 0,
+        net_amount REAL NOT NULL DEFAULT 0,
         payment_type TEXT NOT NULL,
         cash_amount REAL NOT NULL,
+        bank_amount REAL NOT NULL DEFAULT 0,
+        gpay_amount REAL NOT NULL DEFAULT 0,
         credit_amount REAL NOT NULL,
         page_slip_no INTEGER NOT NULL,
+        slip_number TEXT NOT NULL DEFAULT '',
+        driver_name TEXT NOT NULL DEFAULT '',
+        company_body INTEGER NOT NULL DEFAULT 0,
+        extra_body INTEGER NOT NULL DEFAULT 0,
+        is_pickup INTEGER NOT NULL DEFAULT 0,
+        body_remarks TEXT NOT NULL DEFAULT '',
         extra_info TEXT NOT NULL,
         date TEXT NOT NULL,
         created_at TEXT NOT NULL,
@@ -52,6 +66,11 @@ class DatabaseService {
         party_name TEXT NOT NULL,
         default_item TEXT NOT NULL,
         last_qty REAL NOT NULL,
+        current_rate REAL NOT NULL DEFAULT 0,
+        company_body INTEGER NOT NULL DEFAULT 0,
+        extra_body INTEGER NOT NULL DEFAULT 0,
+        is_pickup INTEGER NOT NULL DEFAULT 0,
+        body_remarks TEXT NOT NULL DEFAULT '',
         updated_at TEXT NOT NULL
       )
     ''');
@@ -90,8 +109,31 @@ class DatabaseService {
         name TEXT PRIMARY KEY
       )
     ''');
+    await db.execute('''
+      CREATE TABLE material_rates (
+        name TEXT PRIMARY KEY,
+        current_rate REAL NOT NULL DEFAULT 0,
+        is_active INTEGER NOT NULL DEFAULT 1
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE purchase_entries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TEXT NOT NULL,
+        time TEXT NOT NULL,
+        vehicle_number TEXT NOT NULL,
+        supplier_name TEXT NOT NULL,
+        material TEXT NOT NULL,
+        quantity REAL NOT NULL,
+        rate REAL NOT NULL,
+        amount REAL NOT NULL,
+        remarks TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )
+    ''');
     for (final item in defaultItems) {
       await db.insert('item_types', {'name': item});
+      await db.insert('material_rates', {'name': item, 'current_rate': defaultRates[item] ?? 0});
     }
     final defaults = AppSettings.defaults();
     await _putSetting(db, 'business_name', defaults.businessName);
@@ -109,18 +151,87 @@ class DatabaseService {
         )
       ''');
     }
+    if (oldVersion < 3) {
+      for (final sql in [
+        'ALTER TABLE entries ADD COLUMN gross_amount REAL NOT NULL DEFAULT 0',
+        "ALTER TABLE entries ADD COLUMN discount_type TEXT NOT NULL DEFAULT 'none'",
+        'ALTER TABLE entries ADD COLUMN discount_value REAL',
+        'ALTER TABLE entries ADD COLUMN discount_amount REAL NOT NULL DEFAULT 0',
+        'ALTER TABLE entries ADD COLUMN net_amount REAL NOT NULL DEFAULT 0',
+        'ALTER TABLE entries ADD COLUMN bank_amount REAL NOT NULL DEFAULT 0',
+        'ALTER TABLE entries ADD COLUMN gpay_amount REAL NOT NULL DEFAULT 0',
+        "ALTER TABLE entries ADD COLUMN slip_number TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE entries ADD COLUMN driver_name TEXT NOT NULL DEFAULT ''",
+        'ALTER TABLE entries ADD COLUMN company_body INTEGER NOT NULL DEFAULT 0',
+        'ALTER TABLE entries ADD COLUMN extra_body INTEGER NOT NULL DEFAULT 0',
+        'ALTER TABLE entries ADD COLUMN is_pickup INTEGER NOT NULL DEFAULT 0',
+        "ALTER TABLE entries ADD COLUMN body_remarks TEXT NOT NULL DEFAULT ''",
+        'ALTER TABLE vehicles ADD COLUMN current_rate REAL NOT NULL DEFAULT 0',
+        'ALTER TABLE vehicles ADD COLUMN company_body INTEGER NOT NULL DEFAULT 0',
+        'ALTER TABLE vehicles ADD COLUMN extra_body INTEGER NOT NULL DEFAULT 0',
+        'ALTER TABLE vehicles ADD COLUMN is_pickup INTEGER NOT NULL DEFAULT 0',
+        "ALTER TABLE vehicles ADD COLUMN body_remarks TEXT NOT NULL DEFAULT ''",
+      ]) {
+        try {
+          await db.execute(sql);
+        } catch (_) {}
+      }
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS material_rates (
+          name TEXT PRIMARY KEY,
+          current_rate REAL NOT NULL DEFAULT 0,
+          is_active INTEGER NOT NULL DEFAULT 1
+        )
+      ''');
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS purchase_entries (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          date TEXT NOT NULL,
+          time TEXT NOT NULL,
+          vehicle_number TEXT NOT NULL,
+          supplier_name TEXT NOT NULL,
+          material TEXT NOT NULL,
+          quantity REAL NOT NULL,
+          rate REAL NOT NULL,
+          amount REAL NOT NULL,
+          remarks TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        )
+      ''');
+      for (final item in defaultItems) {
+        await db.insert('item_types', {'name': item}, conflictAlgorithm: ConflictAlgorithm.ignore);
+        await db.insert(
+          'material_rates',
+          {'name': item, 'current_rate': defaultRates[item] ?? 0, 'is_active': 1},
+          conflictAlgorithm: ConflictAlgorithm.ignore,
+        );
+      }
+      await db.execute('UPDATE entries SET gross_amount = amount WHERE gross_amount = 0');
+      await db.execute('UPDATE entries SET net_amount = amount WHERE net_amount = 0');
+    }
   }
 
   static const defaultItems = [
     '6mm',
     '20mm',
     '40mm',
-    'Sand',
+    'M-Sand',
+    'P-Sand',
     'Dust',
-    '12mm',
     'PS',
     'GSB',
   ];
+
+  static const defaultRates = {
+    '6mm': 0.0,
+    '20mm': 0.0,
+    '40mm': 0.0,
+    'M-Sand': 0.0,
+    'P-Sand': 0.0,
+    'Dust': 0.0,
+    'PS': 0.0,
+    'GSB': 0.0,
+  };
 
   Future<void> _putSetting(DatabaseExecutor db, String key, String value) {
     return db.insert(
@@ -164,10 +275,31 @@ class DatabaseService {
       {'name': name},
       conflictAlgorithm: ConflictAlgorithm.ignore,
     );
+    await (await db).insert(
+      'material_rates',
+      {'name': name, 'current_rate': 0, 'is_active': 1},
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
   }
 
   Future<void> removeItemType(String name) async {
     await (await db).delete('item_types', where: 'name = ?', whereArgs: [name]);
+    await (await db).update('material_rates', {'is_active': 0}, where: 'name = ?', whereArgs: [name]);
+  }
+
+  Future<Map<String, double>> materialRates() async {
+    final rows = await (await db).query('material_rates', where: 'is_active = 1');
+    return {
+      for (final row in rows) row['name'] as String: (row['current_rate'] as num).toDouble(),
+    };
+  }
+
+  Future<void> saveMaterialRate(String name, double rate) async {
+    await (await db).insert(
+      'material_rates',
+      {'name': name, 'current_rate': rate, 'is_active': 1},
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
   }
 
   Future<List<String>> partyNames() async {
@@ -288,6 +420,11 @@ class DatabaseService {
           partyName: entry.partyName,
           defaultItem: entry.itemType,
           lastQty: entry.quantity,
+          currentRate: entry.unitRate ?? 0,
+          companyBody: entry.companyBody,
+          extraBody: entry.extraBody,
+          isPickup: entry.isPickup,
+          bodyRemarks: entry.bodyRemarks,
           updatedAt: DateTime.now(),
         ).toMap(),
         conflictAlgorithm: ConflictAlgorithm.replace,
@@ -320,7 +457,7 @@ class DatabaseService {
     var credit = 0.0;
     for (final entry in entries) {
       itemTotals[entry.itemType] = (itemTotals[entry.itemType] ?? 0) + entry.quantity;
-      cash += entry.cashAmount;
+      cash += entry.cashAmount + entry.bankAmount + entry.gpayAmount;
       credit += entry.creditAmount;
     }
     await txn.insert(
@@ -348,6 +485,23 @@ class DatabaseService {
 
   Future<void> addAccount(AccountRow row) async {
     await (await db).insert('accounts', row.toMap());
+  }
+
+  Future<List<PurchaseEntry>> purchaseEntriesForDate(String date) async {
+    final rows = await (await db).query(
+      'purchase_entries',
+      where: 'date = ?',
+      whereArgs: [date],
+      orderBy: 'time DESC, id DESC',
+    );
+    return rows.map(PurchaseEntry.fromMap).toList();
+  }
+
+  Future<void> savePurchaseEntry(PurchaseEntry entry) async {
+    await (await db).insert('purchase_entries', entry.toMap());
+    if (entry.supplierName.trim().isNotEmpty) {
+      await addPartyName(entry.supplierName.trim());
+    }
   }
 
   Future<void> updateAccount(AccountRow row) async {

@@ -22,7 +22,7 @@ class DailyTotals {
     double credit = 0;
     for (final entry in entries) {
       totalQty += entry.quantity;
-      cash += entry.cashAmount;
+      cash += entry.cashAmount + entry.bankAmount + entry.gpayAmount;
       credit += entry.creditAmount;
       itemQty[entry.itemType] = (itemQty[entry.itemType] ?? 0) + entry.quantity;
     }

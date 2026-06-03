@@ -115,6 +115,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
           onRemove: state.removeItemType,
         ),
         const SizedBox(height: 12),
+        SectionCard(
+          title: 'Material Rates',
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: state.itemTypes.map((item) {
+              final rate = state.materialRates[item] ?? 0;
+              return ActionChip(
+                label: Text('$item - Rs ${rate.toStringAsFixed(0)}/CFT'),
+                onPressed: () => _editRate(item, rate),
+              );
+            }).toList(),
+          ),
+        ),
+        const SizedBox(height: 12),
         _ManageList(
           title: 'Party Names',
           values: state.partyNames,
@@ -123,6 +138,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ],
     );
+  }
+
+  Future<void> _editRate(String item, double currentRate) async {
+    final controller = TextEditingController(text: currentRate.toStringAsFixed(0));
+    final rate = await showDialog<double>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('$item Rate'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(labelText: 'Rate per CFT'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, double.tryParse(controller.text) ?? 0), child: const Text('Save')),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (rate != null && mounted) {
+      await context.read<AppState>().saveMaterialRate(item, rate);
+    }
   }
 }
 

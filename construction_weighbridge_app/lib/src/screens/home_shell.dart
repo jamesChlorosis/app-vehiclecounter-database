@@ -5,6 +5,7 @@ import 'entry_form_screen.dart';
 import 'home_screen.dart';
 import 'scan_screen.dart';
 import 'settings_screen.dart';
+import 'boulder_purchase_screen.dart';
 import 'summary_screen.dart';
 import 'todays_log_screen.dart';
 
@@ -41,6 +42,7 @@ class _HomeShellState extends State<HomeShell> {
     final screens = [
       HomeScreen(onScan: _scan, onManual: () => _openEntryForm('')),
       TodaysLogScreen(onEdit: (entry) => _openEntryForm(entry.vehicleNumber, entry: entry)),
+      const BoulderPurchaseScreen(),
       const SummaryScreen(),
       const SettingsScreen(),
     ];
@@ -52,6 +54,7 @@ class _HomeShellState extends State<HomeShell> {
         destinations: const [
           NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Home'),
           NavigationDestination(icon: Icon(Icons.list_alt_outlined), selectedIcon: Icon(Icons.list_alt), label: 'Today'),
+          NavigationDestination(icon: Icon(Icons.move_to_inbox_outlined), selectedIcon: Icon(Icons.move_to_inbox), label: 'Boulder'),
           NavigationDestination(icon: Icon(Icons.bar_chart_outlined), selectedIcon: Icon(Icons.bar_chart), label: 'Summary'),
           NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings), label: 'Settings'),
         ],

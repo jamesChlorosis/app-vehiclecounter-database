@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../models/account_row.dart';
 import '../models/daily_totals.dart';
 import '../models/entry.dart';
+import '../models/purchase_entry.dart';
 import '../models/settings.dart';
 import '../models/vehicle.dart';
 import '../services/database_service.dart';
@@ -18,8 +19,10 @@ class AppState extends ChangeNotifier {
 
   AppSettings settings = AppSettings.defaults();
   List<String> itemTypes = DatabaseService.defaultItems;
+  Map<String, double> materialRates = {};
   List<String> partyNames = [];
   List<Entry> todayEntries = [];
+  List<PurchaseEntry> todayPurchases = [];
   List<AccountRow> accounts = [];
   int unsyncedCount = 0;
   bool busy = false;
@@ -35,6 +38,7 @@ class AppState extends ChangeNotifier {
   Future<void> bootstrap() async {
     settings = await database.settings();
     itemTypes = await database.itemTypes();
+    materialRates = await database.materialRates();
     partyNames = await database.partyNames();
     await refresh();
   }
@@ -42,8 +46,10 @@ class AppState extends ChangeNotifier {
   Future<void> refresh() async {
     today = Entry.dateFormat.format(DateTime.now());
     todayEntries = await database.entriesForDate(today);
+    todayPurchases = await database.purchaseEntriesForDate(today);
     accounts = await database.accountsForDate(today);
     partyNames = await database.partyNames();
+    materialRates = await database.materialRates();
     unsyncedCount = (await database.unsyncedEntries()).length;
     notifyListeners();
   }
@@ -77,12 +83,20 @@ class AppState extends ChangeNotifier {
     if (cleaned.isEmpty) return;
     await database.addItemType(cleaned);
     itemTypes = await database.itemTypes();
+    materialRates = await database.materialRates();
     notifyListeners();
   }
 
   Future<void> removeItemType(String item) async {
     await database.removeItemType(item);
     itemTypes = await database.itemTypes();
+    materialRates = await database.materialRates();
+    notifyListeners();
+  }
+
+  Future<void> saveMaterialRate(String item, double rate) async {
+    await database.saveMaterialRate(item, rate);
+    materialRates = await database.materialRates();
     notifyListeners();
   }
 
@@ -104,6 +118,11 @@ class AppState extends ChangeNotifier {
     await database.addAccount(row);
     accounts = await database.accountsForDate(today);
     notifyListeners();
+  }
+
+  Future<void> savePurchaseEntry(PurchaseEntry entry) async {
+    await database.savePurchaseEntry(entry);
+    await refresh();
   }
 
   Future<void> updateAccount(AccountRow row) async {

@@ -123,10 +123,10 @@ class _HistorySearchScreenState extends State<HistorySearchScreen> {
                             child: ListTile(
                               minVerticalPadding: 14,
                               title: Text(entry.vehicleNumber, style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.w900, fontSize: 20)),
-                              subtitle: Text('${entry.date} | ${entry.partyName} | ${entry.itemType} ${entry.quantity}t'),
+                              subtitle: Text('${entry.date} | ${entry.partyName} | ${entry.itemType} ${entry.quantity} CFT'),
                               trailing: Text(
-                                entry.paymentType == PaymentType.cash ? 'CASH' : 'CREDIT',
-                                style: TextStyle(color: entry.paymentType == PaymentType.cash ? AppColors.green : AppColors.amber, fontWeight: FontWeight.w900),
+                                _paymentLabel(entry.paymentType),
+                                style: TextStyle(color: entry.paymentType == PaymentType.credit ? AppColors.red : AppColors.green, fontWeight: FontWeight.w900),
                               ),
                               onTap: () {
                                 Navigator.pop(context);
@@ -141,6 +141,16 @@ class _HistorySearchScreenState extends State<HistorySearchScreen> {
         ],
       ),
     );
+  }
+
+  String _paymentLabel(PaymentType type) {
+    return switch (type) {
+      PaymentType.cash => 'CASH',
+      PaymentType.bank => 'BANK',
+      PaymentType.gpay => 'GPAY',
+      PaymentType.credit => 'CREDIT',
+      PaymentType.mixed => 'MIXED',
+    };
   }
 
   Future<void> _delete(Entry entry) async {

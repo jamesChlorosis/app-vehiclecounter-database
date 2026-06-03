@@ -1,6 +1,8 @@
 import 'package:intl/intl.dart';
 
-enum PaymentType { cash, credit }
+enum PaymentType { cash, bank, gpay, credit, mixed }
+
+enum DiscountType { none, percentage, fixedAmount }
 
 class Entry {
   Entry({
@@ -14,10 +16,23 @@ class Entry {
     this.timeOut,
     this.unitRate,
     required this.amount,
+    required this.grossAmount,
+    required this.discountType,
+    this.discountValue,
+    required this.discountAmount,
+    required this.netAmount,
     required this.paymentType,
     required this.cashAmount,
+    required this.bankAmount,
+    required this.gpayAmount,
     required this.creditAmount,
     required this.pageSlipNo,
+    required this.slipNumber,
+    required this.driverName,
+    required this.companyBody,
+    required this.extraBody,
+    required this.isPickup,
+    required this.bodyRemarks,
     required this.extraInfo,
     required this.date,
     required this.createdAt,
@@ -34,10 +49,23 @@ class Entry {
   final DateTime? timeOut;
   final double? unitRate;
   final double amount;
+  final double grossAmount;
+  final DiscountType discountType;
+  final double? discountValue;
+  final double discountAmount;
+  final double netAmount;
   final PaymentType paymentType;
   final double cashAmount;
+  final double bankAmount;
+  final double gpayAmount;
   final double creditAmount;
   final int pageSlipNo;
+  final String slipNumber;
+  final String driverName;
+  final bool companyBody;
+  final bool extraBody;
+  final bool isPickup;
+  final String bodyRemarks;
   final String extraInfo;
   final String date;
   final DateTime createdAt;
@@ -57,10 +85,23 @@ class Entry {
     DateTime? timeOut,
     double? unitRate,
     double? amount,
+    double? grossAmount,
+    DiscountType? discountType,
+    double? discountValue,
+    double? discountAmount,
+    double? netAmount,
     PaymentType? paymentType,
     double? cashAmount,
+    double? bankAmount,
+    double? gpayAmount,
     double? creditAmount,
     int? pageSlipNo,
+    String? slipNumber,
+    String? driverName,
+    bool? companyBody,
+    bool? extraBody,
+    bool? isPickup,
+    String? bodyRemarks,
     String? extraInfo,
     String? date,
     DateTime? createdAt,
@@ -77,10 +118,23 @@ class Entry {
       timeOut: timeOut ?? this.timeOut,
       unitRate: unitRate ?? this.unitRate,
       amount: amount ?? this.amount,
+      grossAmount: grossAmount ?? this.grossAmount,
+      discountType: discountType ?? this.discountType,
+      discountValue: discountValue ?? this.discountValue,
+      discountAmount: discountAmount ?? this.discountAmount,
+      netAmount: netAmount ?? this.netAmount,
       paymentType: paymentType ?? this.paymentType,
       cashAmount: cashAmount ?? this.cashAmount,
+      bankAmount: bankAmount ?? this.bankAmount,
+      gpayAmount: gpayAmount ?? this.gpayAmount,
       creditAmount: creditAmount ?? this.creditAmount,
       pageSlipNo: pageSlipNo ?? this.pageSlipNo,
+      slipNumber: slipNumber ?? this.slipNumber,
+      driverName: driverName ?? this.driverName,
+      companyBody: companyBody ?? this.companyBody,
+      extraBody: extraBody ?? this.extraBody,
+      isPickup: isPickup ?? this.isPickup,
+      bodyRemarks: bodyRemarks ?? this.bodyRemarks,
       extraInfo: extraInfo ?? this.extraInfo,
       date: date ?? this.date,
       createdAt: createdAt ?? this.createdAt,
@@ -99,10 +153,23 @@ class Entry {
         'time_out': timeOut?.toIso8601String(),
         'unit_rate': unitRate,
         'amount': amount,
+        'gross_amount': grossAmount,
+        'discount_type': discountType.name,
+        'discount_value': discountValue,
+        'discount_amount': discountAmount,
+        'net_amount': netAmount,
         'payment_type': paymentType.name,
         'cash_amount': cashAmount,
+        'bank_amount': bankAmount,
+        'gpay_amount': gpayAmount,
         'credit_amount': creditAmount,
         'page_slip_no': pageSlipNo,
+        'slip_number': slipNumber,
+        'driver_name': driverName,
+        'company_body': companyBody ? 1 : 0,
+        'extra_body': extraBody ? 1 : 0,
+        'is_pickup': isPickup ? 1 : 0,
+        'body_remarks': bodyRemarks,
         'extra_info': extraInfo,
         'date': date,
         'created_at': createdAt.toIso8601String(),
@@ -122,10 +189,23 @@ class Entry {
             : DateTime.parse(map['time_out'] as String),
         unitRate: (map['unit_rate'] as num?)?.toDouble(),
         amount: (map['amount'] as num).toDouble(),
+        grossAmount: ((map['gross_amount'] ?? map['amount']) as num).toDouble(),
+        discountType: DiscountType.values.byName((map['discount_type'] as String?) ?? 'none'),
+        discountValue: (map['discount_value'] as num?)?.toDouble(),
+        discountAmount: ((map['discount_amount'] ?? 0) as num).toDouble(),
+        netAmount: ((map['net_amount'] ?? map['amount']) as num).toDouble(),
         paymentType: PaymentType.values.byName(map['payment_type'] as String),
         cashAmount: (map['cash_amount'] as num).toDouble(),
+        bankAmount: ((map['bank_amount'] ?? 0) as num).toDouble(),
+        gpayAmount: ((map['gpay_amount'] ?? 0) as num).toDouble(),
         creditAmount: (map['credit_amount'] as num).toDouble(),
         pageSlipNo: map['page_slip_no'] as int,
+        slipNumber: (map['slip_number'] as String?) ?? '',
+        driverName: (map['driver_name'] as String?) ?? '',
+        companyBody: ((map['company_body'] ?? 0) as int) == 1,
+        extraBody: ((map['extra_body'] ?? 0) as int) == 1,
+        isPickup: ((map['is_pickup'] ?? 0) as int) == 1,
+        bodyRemarks: (map['body_remarks'] as String?) ?? '',
         extraInfo: map['extra_info'] as String,
         date: map['date'] as String,
         createdAt: DateTime.parse(map['created_at'] as String),
@@ -142,8 +222,9 @@ class Entry {
         timeFormat.format(timeIn),
         timeOut == null ? '' : timeFormat.format(timeOut!),
         unitRate ?? '',
-        amount,
+        netAmount,
         cashAmount,
+        bankAmount + gpayAmount,
         creditAmount,
       ];
 }

@@ -75,6 +75,7 @@ class SheetsSyncService {
     'Rate',
     'Amount',
     'Cash',
+    'Bank/GPay',
     'Credit',
   ];
 
