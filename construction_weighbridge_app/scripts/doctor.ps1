@@ -20,6 +20,10 @@ $hasJava = Test-Command "java"
 
 if ($hasJava) {
   java -version
+  $javaVersionOutput = (& java -version 2>&1) -join "`n"
+  if ($javaVersionOutput -notmatch 'version "17\.') {
+    Write-Host "[warning] Flutter Android builds should use JDK 17. Current Java does not appear to be 17."
+  }
 }
 
 if ($hasFlutter) {

@@ -15,7 +15,7 @@ Offline-first Flutter APK app for a single weighbridge/gate operator logging qua
 
 ## Build
 
-Flutter is not installed in this Codex environment, so the APK could not be compiled here. On a machine with Flutter and Android SDK:
+This project builds an Android APK with Flutter. On a machine with Flutter, Android SDK Platform Tools, and JDK 17:
 
 ```bash
 cd construction_weighbridge_app
@@ -29,6 +29,8 @@ The APK will be generated at:
 ```text
 build/app/outputs/flutter-apk/app-release.apk
 ```
+
+For phone install steps, see [APK_PHONE_GUIDE.md](APK_PHONE_GUIDE.md).
 
 ## Google Sheets Setup
 
@@ -61,6 +63,12 @@ Keep the `lib/` and `pubspec.yaml` files from this scaffold.
 
 The script runs `flutter pub get`, `flutter test`, and `flutter build apk --release`.
 If PowerShell script execution is blocked, run `.\scripts\build_release_apk.bat`.
+
+To build and install directly to a USB-connected Android phone:
+
+```powershell
+.\scripts\install_to_phone.bat
+```
 
 Before building, you can run:
 

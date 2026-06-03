@@ -1,4 +1,4 @@
-package com.example.construction_weighbridge_app
+package com.mbm.quarrygate
 
 import io.flutter.embedding.android.FlutterActivity
 
