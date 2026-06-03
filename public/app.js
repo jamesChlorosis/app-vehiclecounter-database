@@ -1,279 +1,289 @@
 (function () {
-  const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
-  const maxBytes = 4 * 1024 * 1024;
+  const state = {
+    token: window.localStorage.getItem("autopilotToken") || "",
+    tasks: [],
+    selectedTaskId: "",
+  };
 
-  const uploadPanel = document.getElementById("uploadPanel");
-  const editorPanel = document.getElementById("editorPanel");
-  const imageInput = document.getElementById("imageInput");
-  const errorText = document.getElementById("errorText");
-  const canvas = document.getElementById("canvas");
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  const brushSizeInput = document.getElementById("brushSize");
-  const newImageButton = document.getElementById("newImageButton");
-  const undoButton = document.getElementById("undoButton");
-  const downloadButton = document.getElementById("downloadButton");
-  const cursorPreview = document.getElementById("cursorPreview");
-  const toolButtons = Array.from(document.querySelectorAll("[data-tool]"));
-  const dropZone = document.getElementById("dropZone");
-  const fileName = document.getElementById("fileName");
-  const imageMeta = document.getElementById("imageMeta");
-  const brushValue = document.getElementById("brushValue");
-  const toolStatus = document.getElementById("toolStatus");
-  const historyCount = document.getElementById("historyCount");
-  const params = new URLSearchParams(window.location.search);
-  const adminKey = params.get("key") || "";
+  const loginView = document.getElementById("loginView");
+  const appView = document.getElementById("appView");
+  const loginForm = document.getElementById("loginForm");
+  const loginError = document.getElementById("loginError");
+  const taskRows = document.getElementById("taskRows");
+  const taskCount = document.getElementById("taskCount");
+  const taskDetail = document.getElementById("taskDetail");
+  const runLog = document.getElementById("runLog");
+  const taskForm = document.getElementById("taskForm");
+  const formError = document.getElementById("formError");
+  const triggerJson = document.getElementById("triggerJson");
+  const actionsJson = document.getElementById("actionsJson");
 
-  if (params.get("key")) {
-    window.localStorage.setItem("imagesafeAdminKey", params.get("key"));
+  const presets = {
+    internship: {
+      trigger: {
+        type: "time_recurring",
+        cron_expression: "0 8 * * *",
+        human_label: "Every day at 8:00 AM",
+      },
+      actions: [
+        {
+          type: "web_scrape",
+          config: { url: "https://example.com/jobs", selector: "body" },
+        },
+        {
+          type: "ai_summarize",
+          config: {
+            text: "{{result}}",
+            prompt: "Find new cybersecurity internships in this page text. Return concise bullets.",
+          },
+        },
+        {
+          type: "send_telegram",
+          config: { chat_id: "YOUR_CHAT_ID", message_template: "{{result}}" },
+        },
+      ],
+    },
+    price: {
+      trigger: {
+        type: "event_poll",
+        poll_interval_seconds: 300,
+        condition: { type: "price_threshold", params: { ticker: "AAPL", above: 200 } },
+      },
+      actions: [
+        {
+          type: "send_discord",
+          config: { message_template: "Price alert: {{triggerOutput}}" },
+        },
+      ],
+    },
+  };
+
+  function showApp() {
+    loginView.classList.toggle("hidden", Boolean(state.token));
+    appView.classList.toggle("hidden", !state.token);
   }
 
-  let tool = "black";
-  let brushSize = Number(brushSizeInput.value);
-  let isDrawing = false;
-  let lastPoint = null;
-  const history = [];
-
-  function setError(message) {
-    errorText.textContent = message || "";
-  }
-
-  function setBusy(isBusy) {
-    dropZone.classList.toggle("busy", isBusy);
-    imageInput.disabled = isBusy;
-  }
-
-  function updateEditorStatus() {
-    brushValue.textContent = `${brushSize}px`;
-    historyCount.textContent = String(history.length);
-    toolStatus.textContent = `${tool === "black" ? "Black" : "Blur"} brush active`;
-  }
-
-  function friendlyFileError(file) {
-    if (!file) return "Please choose an image file.";
-    if (!allowedTypes.has(file.type)) return "Please choose a JPG, PNG, WEBP, or GIF image.";
-    if (file.size > maxBytes) return "That image is larger than 4MB. Please choose a smaller file.";
-    return "";
-  }
-
-  function pushHistory() {
-    if (history.length >= 30) {
-      history.shift();
-    }
-    history.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
-    undoButton.disabled = history.length === 0;
-    updateEditorStatus();
-  }
-
-  function undo() {
-    const previous = history.pop();
-    if (!previous) return;
-    ctx.putImageData(previous, 0, 0);
-    undoButton.disabled = history.length === 0;
-    updateEditorStatus();
-  }
-
-  function canvasPoint(event) {
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    return {
-      x: (event.clientX - rect.left) * scaleX,
-      y: (event.clientY - rect.top) * scaleY,
-    };
-  }
-
-  function paintBlack(from, to) {
-    ctx.save();
-    ctx.globalCompositeOperation = "source-over";
-    ctx.strokeStyle = "#000";
-    ctx.fillStyle = "#000";
-    ctx.lineWidth = brushSize;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.beginPath();
-    ctx.moveTo(from.x, from.y);
-    ctx.lineTo(to.x, to.y);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(to.x, to.y, brushSize / 2, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  }
-
-  function paintBlur(point) {
-    const radius = brushSize / 2;
-    const sx = Math.max(0, Math.floor(point.x - radius));
-    const sy = Math.max(0, Math.floor(point.y - radius));
-    const size = Math.ceil(brushSize);
-    const sw = Math.min(size, canvas.width - sx);
-    const sh = Math.min(size, canvas.height - sy);
-    if (sw <= 0 || sh <= 0) return;
-
-    const scratch = document.createElement("canvas");
-    scratch.width = sw;
-    scratch.height = sh;
-    const scratchCtx = scratch.getContext("2d");
-    scratchCtx.filter = `blur(${Math.max(6, Math.round(brushSize / 4))}px)`;
-    scratchCtx.drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
-    ctx.clip();
-    ctx.drawImage(scratch, sx, sy);
-    ctx.restore();
-  }
-
-  function draw(event) {
-    if (!isDrawing) return;
-    const point = canvasPoint(event);
-    if (tool === "black") {
-      paintBlack(lastPoint || point, point);
-    } else {
-      paintBlur(point);
-    }
-    lastPoint = point;
-  }
-
-  async function storeOriginal(file) {
-    const formData = new FormData();
-    formData.append("image", file);
-    const response = await fetch("/api/upload", {
-      method: "POST",
-      body: formData,
+  async function api(path, options) {
+    const response = await fetch(`/api${path}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: state.token ? `Bearer ${state.token}` : "",
+        ...(options && options.headers ? options.headers : {}),
+      },
     });
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      throw new Error(data.error || "The image could not be uploaded. Please try again.");
-    }
-    return response.json();
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || response.statusText);
+    return data;
   }
 
-  function showUploadPanel() {
-    editorPanel.classList.add("hidden");
-    uploadPanel.classList.remove("hidden");
-    imageInput.value = "";
-    setError("");
-    cursorPreview.style.display = "none";
+  function fmt(value) {
+    if (!value) return "-";
+    return new Date(value).toLocaleString();
   }
 
-  function loadCanvas(file) {
-    const image = new Image();
-    image.onload = () => {
-      canvas.width = image.naturalWidth;
-      canvas.height = image.naturalHeight;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(image, 0, 0);
-      history.length = 0;
-      undoButton.disabled = true;
-      fileName.textContent = file.name;
-      imageMeta.textContent = `${image.naturalWidth} x ${image.naturalHeight} px`;
-      updateEditorStatus();
-      uploadPanel.classList.add("hidden");
-      editorPanel.classList.remove("hidden");
-      URL.revokeObjectURL(image.src);
-    };
-    image.onerror = () => setError("That image could not be opened. Please try a different file.");
-    image.src = URL.createObjectURL(file);
+  function triggerLabel(trigger) {
+    if (!trigger) return "-";
+    if (trigger.type === "time_once") return `Once: ${fmt(trigger.run_at)}`;
+    if (trigger.type === "time_recurring") return trigger.human_label || trigger.cron_expression;
+    return `Poll ${trigger.poll_interval_seconds}s: ${trigger.condition.type}`;
   }
 
-  async function handleFile(file) {
-    const message = friendlyFileError(file);
-    if (message) {
-      setError(message);
+  function statusBadge(status) {
+    return `<span class="status-badge status-${status}">${status}</span>`;
+  }
+
+  function renderTasks() {
+    taskCount.textContent = String(state.tasks.length);
+    if (!state.tasks.length) {
+      taskRows.innerHTML = '<tr><td class="px-4 py-6 text-zinc-500" colspan="6">No tasks yet.</td></tr>';
+      taskDetail.innerHTML = '<p class="text-zinc-500">Select or create a task.</p>';
       return;
     }
 
-    setError("");
-    setBusy(true);
-    try {
-      const upload = await storeOriginal(file);
-      if (adminKey) {
-        window.location.assign(`/admin?key=${encodeURIComponent(adminKey)}&uploaded=${encodeURIComponent(upload.filename)}`);
-        return;
-      }
-      loadCanvas(file);
-    } catch (error) {
-      setError(error.message);
-      if (!adminKey) {
-        loadCanvas(file);
-      }
-    } finally {
-      setBusy(false);
-    }
+    taskRows.innerHTML = state.tasks
+      .map(
+        (task) => `
+          <tr class="${task.id === state.selectedTaskId ? "bg-zinc-800/60" : ""}">
+            <td class="px-4 py-3 align-top">
+              <button class="text-left font-medium text-white hover:text-cyan-300" data-detail="${task.id}">${escapeHtml(task.name)}</button>
+              <div class="mt-1 max-w-xs truncate text-xs text-zinc-500">${escapeHtml(task.description || "")}</div>
+            </td>
+            <td class="px-4 py-3 align-top text-zinc-300">${escapeHtml(triggerLabel(task.trigger))}</td>
+            <td class="px-4 py-3 align-top text-zinc-400">${fmt(task.last_run_at)}</td>
+            <td class="px-4 py-3 align-top text-zinc-400">${fmt(task.next_run_at)}</td>
+            <td class="px-4 py-3 align-top">${statusBadge(task.status)}</td>
+            <td class="px-4 py-3 align-top">
+              <div class="flex gap-2">
+                <button class="border border-zinc-700 px-2 py-1 text-xs hover:border-cyan-400" data-run="${task.id}">Run</button>
+                <button class="border border-zinc-700 px-2 py-1 text-xs hover:border-zinc-300" data-toggle="${task.id}">${task.status === "paused" ? "Resume" : "Pause"}</button>
+                <button class="border border-zinc-700 px-2 py-1 text-xs hover:border-red-300" data-delete="${task.id}">Delete</button>
+              </div>
+            </td>
+          </tr>
+        `,
+      )
+      .join("");
   }
 
-  imageInput.addEventListener("change", () => {
-    handleFile(imageInput.files && imageInput.files[0]);
+  function renderDetail(task, runs) {
+    if (!task) {
+      taskDetail.innerHTML = '<p class="text-zinc-500">Select or create a task.</p>';
+      return;
+    }
+
+    taskDetail.innerHTML = `
+      <div class="space-y-4">
+        <div>
+          <h3 class="text-base font-semibold text-white">${escapeHtml(task.name)}</h3>
+          <p class="mt-1 text-zinc-400">${escapeHtml(task.description || "")}</p>
+        </div>
+        <div>
+          <div class="mb-2 text-xs uppercase tracking-wider text-zinc-500">Trigger</div>
+          <pre class="overflow-auto border border-zinc-800 bg-zinc-950 p-3 text-xs">${escapeHtml(JSON.stringify(task.trigger, null, 2))}</pre>
+        </div>
+        <div>
+          <div class="mb-2 text-xs uppercase tracking-wider text-zinc-500">Actions</div>
+          <pre class="overflow-auto border border-zinc-800 bg-zinc-950 p-3 text-xs">${escapeHtml(JSON.stringify(task.actions, null, 2))}</pre>
+        </div>
+        <div>
+          <div class="mb-2 text-xs uppercase tracking-wider text-zinc-500">Recent runs</div>
+          <div class="space-y-2">${runs.length ? runs.map(renderRunRow).join("") : '<p class="text-zinc-500">No runs yet.</p>'}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderRunRow(run) {
+    return `
+      <button class="block w-full border border-zinc-800 bg-zinc-950 p-3 text-left hover:border-cyan-400" data-log="${run.id}">
+        <div class="flex items-center justify-between gap-3">
+          <span>${statusBadge(run.status)}</span>
+          <span class="text-xs text-zinc-500">${fmt(run.started_at)}</span>
+        </div>
+        <div class="mt-2 truncate text-xs text-zinc-400">${escapeHtml(run.error || run.output || "")}</div>
+      </button>
+    `;
+  }
+
+  function escapeHtml(value) {
+    return String(value || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  async function loadTasks() {
+    const data = await api("/tasks");
+    state.tasks = data.tasks;
+    if (!state.selectedTaskId && state.tasks[0]) state.selectedTaskId = state.tasks[0].id;
+    renderTasks();
+    if (state.selectedTaskId) await loadDetail(state.selectedTaskId);
+  }
+
+  async function loadDetail(id) {
+    state.selectedTaskId = id;
+    renderTasks();
+    const data = await api(`/tasks/${id}`);
+    renderDetail(data.task, data.runs);
+  }
+
+  async function runTask(id) {
+    const data = await api(`/tasks/${id}/run`, { method: "POST", body: "{}" });
+    runLog.textContent = JSON.stringify(data.run, null, 2);
+    await loadTasks();
+  }
+
+  async function toggleTask(id) {
+    const task = state.tasks.find((item) => item.id === id);
+    await api(`/tasks/${id}/${task && task.status === "paused" ? "resume" : "pause"}`, { method: "POST", body: "{}" });
+    await loadTasks();
+  }
+
+  async function deleteTask(id) {
+    await api(`/tasks/${id}`, { method: "DELETE" });
+    if (state.selectedTaskId === id) state.selectedTaskId = "";
+    await loadTasks();
+  }
+
+  function setPreset(name) {
+    const preset = presets[name];
+    triggerJson.value = JSON.stringify(preset.trigger, null, 2);
+    actionsJson.value = JSON.stringify(preset.actions, null, 2);
+  }
+
+  loginForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    loginError.textContent = "";
+    try {
+      const data = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: document.getElementById("email").value,
+          password: document.getElementById("password").value,
+        }),
+      }).then(async (response) => {
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error || response.statusText);
+        return body;
+      });
+      state.token = data.token;
+      window.localStorage.setItem("autopilotToken", state.token);
+      showApp();
+      await loadTasks();
+    } catch (error) {
+      loginError.textContent = error.message;
+    }
   });
 
-  ["dragenter", "dragover"].forEach((eventName) => {
-    dropZone.addEventListener(eventName, (event) => {
-      event.preventDefault();
-      dropZone.classList.add("dragging");
-    });
+  taskForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    formError.textContent = "";
+    try {
+      const payload = {
+        name: document.getElementById("taskName").value,
+        description: document.getElementById("taskDescription").value,
+        trigger: JSON.parse(triggerJson.value),
+        actions: JSON.parse(actionsJson.value),
+      };
+      const data = await api("/tasks", { method: "POST", body: JSON.stringify(payload) });
+      state.selectedTaskId = data.task.id;
+      taskForm.reset();
+      setPreset("internship");
+      await loadTasks();
+    } catch (error) {
+      formError.textContent = error.message;
+    }
   });
 
-  ["dragleave", "drop"].forEach((eventName) => {
-    dropZone.addEventListener(eventName, (event) => {
-      event.preventDefault();
-      dropZone.classList.remove("dragging");
-    });
+  document.addEventListener("click", async (event) => {
+    const target = event.target.closest("button");
+    if (!target) return;
+    if (target.dataset.detail) await loadDetail(target.dataset.detail);
+    if (target.dataset.run) await runTask(target.dataset.run);
+    if (target.dataset.toggle) await toggleTask(target.dataset.toggle);
+    if (target.dataset.delete) await deleteTask(target.dataset.delete);
+    if (target.dataset.log) {
+      const data = await api(`/runs/${target.dataset.log}`);
+      runLog.textContent = JSON.stringify(data.run, null, 2);
+    }
+    if (target.dataset.preset) setPreset(target.dataset.preset);
   });
 
-  dropZone.addEventListener("drop", (event) => {
-    handleFile(event.dataTransfer.files && event.dataTransfer.files[0]);
+  document.getElementById("refreshButton").addEventListener("click", loadTasks);
+  document.getElementById("logoutButton").addEventListener("click", () => {
+    state.token = "";
+    window.localStorage.removeItem("autopilotToken");
+    showApp();
   });
 
-  toolButtons.forEach((button) => {
-    button.addEventListener("click", () => {
-      tool = button.dataset.tool;
-      toolButtons.forEach((item) => item.classList.toggle("active", item === button));
-      updateEditorStatus();
-    });
+  setPreset("internship");
+  showApp();
+  if (state.token) loadTasks().catch(() => {
+    state.token = "";
+    window.localStorage.removeItem("autopilotToken");
+    showApp();
   });
-
-  brushSizeInput.addEventListener("input", () => {
-    brushSize = Number(brushSizeInput.value);
-    cursorPreview.style.width = `${brushSize}px`;
-    cursorPreview.style.height = `${brushSize}px`;
-    updateEditorStatus();
-  });
-
-  canvas.addEventListener("pointerdown", (event) => {
-    canvas.setPointerCapture(event.pointerId);
-    isDrawing = true;
-    lastPoint = canvasPoint(event);
-    pushHistory();
-    draw(event);
-  });
-
-  canvas.addEventListener("pointermove", (event) => {
-    cursorPreview.style.display = "block";
-    cursorPreview.style.left = `${event.clientX}px`;
-    cursorPreview.style.top = `${event.clientY}px`;
-    draw(event);
-  });
-
-  canvas.addEventListener("pointerup", (event) => {
-    isDrawing = false;
-    lastPoint = null;
-    canvas.releasePointerCapture(event.pointerId);
-  });
-
-  canvas.addEventListener("pointerleave", () => {
-    cursorPreview.style.display = "none";
-  });
-
-  undoButton.addEventListener("click", undo);
-  newImageButton.addEventListener("click", showUploadPanel);
-
-  downloadButton.addEventListener("click", () => {
-    const link = document.createElement("a");
-    link.download = `redacted-${Date.now()}.png`;
-    link.href = canvas.toDataURL("image/png");
-    link.click();
-  });
-
-  updateEditorStatus();
 })();

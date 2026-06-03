@@ -1,5 +1,7 @@
 import { spawn } from "node:child_process";
+import fs from "node:fs";
 import { createServer } from "node:net";
+import path from "node:path";
 
 async function getFreePort() {
   return new Promise((resolve, reject) => {
@@ -12,15 +14,24 @@ async function getFreePort() {
   });
 }
 
-const port = await getFreePort();
-const baseUrl = `http://127.0.0.1:${port}`;
-const pngBytes = Buffer.from(
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/l7xO6QAAAABJRU5ErkJggg==",
-  "base64"
-);
+async function expect(condition, message) {
+  if (!condition) throw new Error(message);
+}
 
-const server = spawn("node", ["server.js"], {
-  env: { ...process.env, PORT: String(port), NODE_ENV: "test" },
+const port = await getFreePort();
+const dbPath = path.resolve("data", `smoke-${port}.sqlite`);
+const baseUrl = `http://127.0.0.1:${port}`;
+
+const server = spawn("node", ["dist/server.js"], {
+  env: {
+    ...process.env,
+    PORT: String(port),
+    NODE_ENV: "test",
+    DATABASE_URL: dbPath,
+    JWT_SECRET: "smoke-secret",
+    ADMIN_EMAIL: "admin@autopilot.local",
+    AUTOPILOT_ADMIN_PASSWORD: "autopilot",
+  },
   stdio: ["ignore", "pipe", "pipe"],
 });
 
@@ -31,9 +42,9 @@ server.stderr.on("data", (chunk) => {
 
 async function waitForServer() {
   const start = Date.now();
-  while (Date.now() - start < 5000) {
+  while (Date.now() - start < 10000) {
     try {
-      const response = await fetch(baseUrl);
+      const response = await fetch(`${baseUrl}/api/health`);
       if (response.ok) return;
     } catch {
       await new Promise((resolve) => setTimeout(resolve, 100));
@@ -42,58 +53,45 @@ async function waitForServer() {
   throw new Error(`Server did not start. ${stderr}`);
 }
 
-async function expect(condition, message) {
-  if (!condition) throw new Error(message);
-}
-
-async function uploadValidImage() {
-  const form = new FormData();
-  form.append("image", new Blob([pngBytes], { type: "image/png" }), "smoke.png");
-  return fetch(`${baseUrl}/api/upload`, { method: "POST", body: form });
-}
-
-async function uploadInvalidFile() {
-  const form = new FormData();
-  form.append("image", new Blob(["not an image"], { type: "text/plain" }), "notes.txt");
-  return fetch(`${baseUrl}/api/upload`, { method: "POST", body: form });
-}
-
 try {
   await waitForServer();
 
   const home = await fetch(baseUrl);
-  await expect(home.ok && (await home.text()).includes("ImageSafe Redactor"), "Home page did not render.");
+  await expect(home.ok && (await home.text()).includes("AutoPilot"), "Dashboard did not render.");
 
-  const blockedAdmin = await fetch(`${baseUrl}/admin`);
-  await expect(blockedAdmin.status === 404, "Admin route without key should return 404.");
+  const login = await fetch(`${baseUrl}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: "admin@autopilot.local", password: "autopilot" }),
+  });
+  await expect(login.ok, "Login failed.");
+  const { token } = await login.json();
+  await expect(Boolean(token), "Login response missing token.");
 
-  const invalid = await uploadInvalidFile();
-  await expect(invalid.status === 400, "Invalid upload should return 400.");
+  const create = await fetch(`${baseUrl}/api/tasks`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      name: "Smoke task",
+      description: "Local script action",
+      trigger: { type: "time_once", run_at: new Date(Date.now() + 60_000).toISOString() },
+      actions: [{ type: "run_script", config: { script: "return `hello ${task.name}`;" } }],
+    }),
+  });
+  await expect(create.status === 201, "Task creation failed.");
+  const { task } = await create.json();
 
-  const upload = await uploadValidImage();
-  await expect(upload.status === 201, "Valid upload should return 201.");
-  const uploadData = await upload.json();
-  await expect(Boolean(uploadData.filename), "Upload response missing filename.");
-
-  const list = await fetch(`${baseUrl}/api/admin/images?key=SECRETKEY2077`);
-  await expect(list.ok, "Admin image list failed.");
-  const listData = await list.json();
-  const saved = listData.images.find((image) => image.filename === uploadData.filename);
-  await expect(Boolean(saved), "Saved image not present in admin list.");
-
-  const blockedImage = await fetch(`${baseUrl}/uploads/${encodeURIComponent(uploadData.filename)}`);
-  await expect(blockedImage.status === 404, "Image file without key should return 404.");
-
-  const image = await fetch(`${baseUrl}${saved.url}`);
-  await expect(image.ok && image.headers.get("content-type")?.startsWith("image/"), "Keyed image file did not load.");
-
-  const remove = await fetch(
-    `${baseUrl}/api/admin/images/${encodeURIComponent(uploadData.filename)}?key=SECRETKEY2077`,
-    { method: "DELETE" }
-  );
-  await expect(remove.ok, "Delete image failed.");
+  const run = await fetch(`${baseUrl}/api/tasks/${task.id}/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+  });
+  await expect(run.ok, "Manual task run failed.");
+  const runData = await run.json();
+  await expect(runData.run.status === "success", "Task run did not succeed.");
+  await expect(runData.run.output.includes("hello Smoke task"), "Task run output missing script result.");
 
   console.log("Smoke test passed.");
 } finally {
   server.kill();
+  if (fs.existsSync(dbPath)) fs.unlinkSync(dbPath);
 }

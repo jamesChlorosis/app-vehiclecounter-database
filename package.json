@@ -1,20 +1,42 @@
 {
-  "name": "imagesafe-redactor",
+  "name": "autopilot-automation-platform",
   "version": "1.0.0",
-  "description": "A full-stack image redaction tool with a canvas editor and key-gated admin gallery.",
-  "main": "server.js",
+  "description": "AutoPilot is a self-hosted, server-side automation platform for persistent scheduled and event-driven tasks.",
+  "type": "module",
+  "main": "dist/server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js",
-    "smoke": "node scripts/smoke.mjs"
+    "dev": "tsx src/server.ts",
+    "start": "node dist/server.js",
+    "build": "tsc",
+    "smoke": "npm run build && node scripts/smoke.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.57.0",
     "@vercel/blob": "^2.4.0",
+    "axios": "^1.13.2",
+    "bullmq": "^5.64.1",
     "cloudinary": "^2.10.0",
-    "express": "^4.19.2",
-    "multer": "^2.1.1"
+    "cron-parser": "^5.4.0",
+    "dotenv": "^17.2.3",
+    "express": "^4.21.2",
+    "ioredis": "^5.8.2",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.1.1",
+    "node-cron": "^4.2.1",
+    "nodemailer": "^7.0.11",
+    "playwright": "^1.56.1",
+    "sql.js": "^1.13.0",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^24.10.1",
+    "@types/nodemailer": "^7.0.4",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   }
 }

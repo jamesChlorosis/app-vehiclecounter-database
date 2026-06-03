@@ -1,3 +1,5 @@
-const app = require("../server");
+import { createServer } from "../dist/server.js";
 
-module.exports = app;
+const { app } = await createServer();
+
+export default app;

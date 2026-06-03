@@ -1,0 +1,40 @@
+services:
+  app:
+    image: node:22-bookworm
+    working_dir: /app
+    command: sh -c "npm install && npm run build && npm start"
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: /app/data/autopilot.sqlite
+      REDIS_URL: redis://redis:6379
+    volumes:
+      - .:/app
+      - autopilot-data:/app/data
+      - autopilot-reports:/app/reports
+    depends_on:
+      - redis
+      - postgres
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: autopilot
+      POSTGRES_USER: autopilot
+      POSTGRES_PASSWORD: autopilot
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+volumes:
+  autopilot-data:
+  autopilot-reports:
+  postgres-data:

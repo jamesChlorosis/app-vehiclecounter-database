@@ -1,6 +1,11 @@
 node_modules/
 uploads/
+data/*.sqlite
+data/files/
+dist/
+reports/
 .vercel/
 .env
 .DS_Store
 npm-debug.log*
+autopilot-dev.log
